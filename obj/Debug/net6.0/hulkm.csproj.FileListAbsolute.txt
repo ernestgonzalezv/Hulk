@@ -1,0 +1,15 @@
+C:\Users\Ermest\hulkm\obj\Debug\net6.0\hulkm.csproj.AssemblyReference.cache
+C:\Users\Ermest\hulkm\obj\Debug\net6.0\hulkm.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Ermest\hulkm\obj\Debug\net6.0\hulkm.AssemblyInfoInputs.cache
+C:\Users\Ermest\hulkm\obj\Debug\net6.0\hulkm.AssemblyInfo.cs
+C:\Users\Ermest\hulkm\obj\Debug\net6.0\hulkm.csproj.CoreCompileInputs.cache
+C:\Users\Ermest\hulkm\bin\Debug\net6.0\hulkm.exe
+C:\Users\Ermest\hulkm\bin\Debug\net6.0\hulkm.deps.json
+C:\Users\Ermest\hulkm\bin\Debug\net6.0\hulkm.runtimeconfig.json
+C:\Users\Ermest\hulkm\bin\Debug\net6.0\hulkm.dll
+C:\Users\Ermest\hulkm\bin\Debug\net6.0\ref\hulkm.dll
+C:\Users\Ermest\hulkm\bin\Debug\net6.0\hulkm.pdb
+C:\Users\Ermest\hulkm\obj\Debug\net6.0\hulkm.dll
+C:\Users\Ermest\hulkm\obj\Debug\net6.0\ref\hulkm.dll
+C:\Users\Ermest\hulkm\obj\Debug\net6.0\hulkm.pdb
+C:\Users\Ermest\hulkm\obj\Debug\net6.0\hulkm.genruntimeconfig.cache
