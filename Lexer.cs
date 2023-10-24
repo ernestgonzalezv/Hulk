@@ -1,134 +1,253 @@
+using static SyntaxKind;
+public class Lexer
+{
+  
+  private int line = 1;
+  public string _text { get; }
+  private int start = 0;
+  private int current = 0;
+  private List<SyntaxToken> Tokens = new List<SyntaxToken>();
+  private Diagnostics Diagnostics;
 
-public class Lexer{ // break it into tokens
+  public Lexer(string _text, Diagnostics diagnostics)
+  {
+    this._text = _text;
+    Diagnostics= diagnostics;
+  }
 
 
-    private string _text;
-    private int _position;
-    private List<string> _diagnostics = new List<string>(); //for errors
-    public Lexer(string text){
-        _text=text;
-    }
+  //auxiliar methods
+  private void AddToken(SyntaxKind type)
+  {
+    AddToken(type, null);
+  }
 
-    public IEnumerable<string> Diagnostics => _diagnostics;
-    private char Current => Peek(0);
-    private char Lookahead => Peek(1);
-    private char Lookback => Peek(-1);
+  private void AddToken(SyntaxKind type, object literal)
+  {
+    var text_value = _text.Substring(start, current - start);
+    Tokens.Add(new SyntaxToken(type, current, literal, text_value));
+  }
+  
 
-    private char Peek(int offset)
+  private void GetIdentifier()
+  {
+    while (IsAlphaNum(Peek())) Next();
+
+    var text = _text.Substring(start, current - start);
+    SyntaxKind kind;
+    switch(text)
     {
-        var index = _position+offset;
-        if(index >= _text.Length || index < 0 )
-            return '\0';
-        return _text[index];
+      case "E":
+        kind = EulerToken;
+        break;
+      case "else":
+        kind = ElseToken;
+        break;
+      case "false":
+        kind = FalseToken;
+        break;
+      case "function":
+        kind = FunctionToken;
+        break;
+      case "if":
+        kind = IfToken;
+        break;
+      case "in":
+        kind = InToken;
+        break;
+      case "let" :
+        kind = LetToken;
+        break;
+      case "PI":
+        kind = PIToken;
+        break;
+      case "true":
+        kind = TrueToken;
+        break;
+      default:
+        kind = IDENTIFIER;
+        break;
     }
 
-    private void Next(){
-        _position++;
-    }
+    AddToken(kind);
+  }
+  
 
-    public SyntaxToken NextToken()
+  private void GetNumber()
+  {
+    while (IsDigit(Peek())) Next();
+
+    if (Peek() == '.' && IsDigit(NextToken()))
     {
-        // numbers
-        // +-/*() 
-        //whitespace
-        if(_text[_text.Length-1] != ';' && _text[_text.Length-1]!='{') throw new Exception("EveryLine must end with a semicolon");
-        if(_position >= _text.Length){
-            return new SyntaxToken(SyntaxKind.EndOfFileToken, _position, "\0", null);
-        }
-        if(char.IsDigit(Current) || Current=='.')
+      Next();
+      while (IsDigit(Peek())) Next();
+    }
+
+    if (IsAlpha(Peek()))
+    {
+      Next();
+      while (IsAlphaNum(Peek())) Next();
+      string text = _text.Substring(start, current - start);
+      SyntaxToken InvalidToken = new SyntaxToken(IDENTIFIER, current, null, text );
+      Diagnostics.ErrorToken("!LEXICAL ERROR: ", InvalidToken, "Invalid token");
+      return;
+    }
+
+    AddToken(NumberToken, double.Parse(_text.Substring(start, current - start)));
+  }
+
+  private void GetString()
+  {
+    while ( !AtTheEnd() && Peek() != '"')
+    {
+      if (NextToken() == '"' && Peek() == '\\') Next();
+      if (Peek() == '\n') line++;
+      Next();
+    }
+    if (AtTheEnd())
+    {
+      var text = _text.Substring(start, current);
+      SyntaxToken InvalidToken = new SyntaxToken(StringToken,current, null, text);
+      Diagnostics.ErrorToken("!LEXICAL ERROR: ", InvalidToken, "Invalid string.");
+      return;
+    }
+    Next();
+    string value = _text.Substring(start + 1, current - start - 2);
+    value = value.Replace("\\n", "\n").Replace("\\t", "\t").Replace("\\\"", "\"");
+    AddToken(StringToken, value);
+  }
+
+  private bool EatToken(char character)
+  {
+    if (AtTheEnd()) return false;
+    if (_text[current] == character){
+      Next();
+      return true;
+    }
+    return false;
+  }
+
+  private char Peek()
+  {
+    if (AtTheEnd()) return '\0';
+    return _text[current];
+  }
+
+  private char NextToken() 
+  {
+    if (current + 1 >= _text.Count()) return '\0';
+    return _text[current + 1];
+  }
+
+  private bool IsAlpha(char character){return (character == '_') || ('A' <= character && character <= 'Z') || ('a' <= character && character <= 'z') ;}
+
+  private bool IsDigit(char character){return ('0' <= character && character <= '9');}
+
+  private bool IsAlphaNum(char character){return IsDigit(character) || IsAlpha(character) ;}
+
+  private bool AtTheEnd()
+  {
+    return current >= _text.Count();
+  }
+
+  private char Next() 
+  {
+    return _text[current++];
+  }
+
+
+  //methods
+  public List<SyntaxToken> GetTokens()
+  {
+    while (!AtTheEnd()){start = current;GetNextToken();}
+    var EOFToken = new SyntaxToken(EOF, current, null, "" );
+    Tokens.Add(EOFToken);
+    return Tokens;
+  }
+
+  private void GetNextToken()
+  {
+    char character = Next();
+    switch (character)
+    {
+      case '(':
+        AddToken(OpenParenthesisToken);
+        break;
+      case ')':
+        AddToken(CloseParenthesisToken);
+        break;
+      case '@':
+        AddToken(ConcatenationToken);
+        break;
+      case '/':
+        AddToken(SlashToken);
+        break;
+      case ',':
+        AddToken(CommaToken);
+        break;
+      case '-':
+        AddToken(MinusToken);
+        break;
+      case '+':
+        AddToken(PlusToken);
+        break;
+      case '*':
+        AddToken(StarToken);
+        break;
+      case '^':
+        AddToken(PowerToken);
+        break;
+      case '|':
+        AddToken(OrToken);
+        break;
+      case '!':
+        AddToken(EatToken('=') ? NotEqualToken : NotToken);
+        break;
+      case ';':
+        AddToken(SemicolonToken);
+        break;
+      case '%':
+        AddToken(ModToken);
+        break;
+      case '&':
+        AddToken(AndToken);
+        break;
+      case '=':
+        AddToken(EatToken('=') ? EqualEqualToken : EatToken('>') ? ImpliesToken : EqualToken);
+        break;
+      case '<':
+        AddToken(EatToken('=') ? LessEqualToken : LessToken);
+        break;
+      case '>':
+        AddToken(EatToken('=') ? GreaterEqualToken : GreaterToken);
+        break;
+      case ' ':
+      case '\r':
+      case '\t':
+        break;
+      case '\n':
+        line++;
+        break;
+      case '"':
+        GetString();
+        break;
+      default:
+        if (IsDigit(character))
         {
-            var start = _position;
-            while (char.IsDigit(Current) || Current == '.')
-                Next();
-            var length = _position - start;
-            var text = _text.Substring(start, length);
-            if(!double.TryParse(text, out var value)){
-                throw new Exception($"The number {_text} cannot be represented by an double");
-            }
-            
-            return new SyntaxToken(SyntaxKind.IntegerToken, start, text,value);
+          GetNumber();
         }
-
-        if(char.IsWhiteSpace(Current)){
-            var start = _position;
-            while (char.IsWhiteSpace(Current))
-                Next();
-            var length = _position - start;
-            var text = _text.Substring(start, length);
-            return new SyntaxToken(SyntaxKind.WhiteSpaceToken, start, text,null);
+        else if (IsAlpha(character))
+        {
+          GetIdentifier();
         }
-
-        if(char.IsLetter(Current)){
-            var start = _position;
-            while(char.IsLetter(Current)){
-            
-                Next();
-            }
-            var length = _position- start;
-            var text = _text.Substring(start, length);
-            
-            //turn constants into numbers
-            if(text == "PI"){
-                if(!double.TryParse(Math.PI.ToString(), out var value)){
-                throw new Exception($"The number {_text} cannot be represented by an double");
-            }
-            
-            return new SyntaxToken(SyntaxKind.IntegerToken, start, text,value);
-
-            } 
-            if(text == "E"){
-                if(!double.TryParse(Math.E.ToString(), out var value)){
-                throw new Exception($"The number {_text} cannot be represented by an double");
-            }
-                return new SyntaxToken(SyntaxKind.IntegerToken, start, text,value);
-
-            }
-
-            if(text == "function")
-            {
-                var functionStatement = _text.Substring(_position+1, _text.Length-_position-1);
-                var name = "";
-                var parameters = "";
-                var body = "";
-                int i =0; 
-                for(;functionStatement[i] != '(' ; i++){name+=functionStatement[i];}
-                i++;
-                for(;functionStatement[i] != ')' ; i++){parameters+=functionStatement[i];}
-                for(;functionStatement[i]!='>';i++);
-                i++;
-                for(;i<functionStatement.Length;i++){body+=functionStatement[i];}
-                Program.functions.Add(name,(parameters,body));
-                _position = text.Length;
-               if(!double.TryParse("1", out var value)){
-                  throw new Exception($"The number {_text} cannot be represented by an double");
-                }
-            
-                 return new SyntaxToken(SyntaxKind.IntegerToken, start, "1",value); 
-                 //fix this
-            }
-            
-            return new SyntaxToken(SyntaxKind.FunctionExpressionCallingToken, start , text, null);
-            
+        else
+        {
+          // unexpected character
+          SyntaxToken invalid = new SyntaxToken(StringToken , current , null,character.ToString());
+          Diagnostics.ErrorToken("!LEXICAL ERROR: ", invalid, "Unexpected character.");
         }
-
-        if(Current == '+'){ return new SyntaxToken(SyntaxKind.PlusToken, _position++, "+",null);}
-        else if(Current == '='){
-            if(Lookahead == '>') {
-                return new SyntaxToken(SyntaxKind.ArrowToken, _position+=2, "=>", null);
-            } 
-            return new SyntaxToken(SyntaxKind.EqualsToken, _position++, "=",null);}
-        else if(Current == ','){ return new SyntaxToken(SyntaxKind.CommaToken, _position++, ",",null);}
-        //else if(Current == '>'){ return new SyntaxToken(SyntaxKind.HigherToken, _position++, "=",null);}
-        else if(Current == '-'){ return new SyntaxToken(SyntaxKind.MinusToken, _position++, "-",null);}
-        else if(Current == '{'){ return new SyntaxToken(SyntaxKind.OpenBodyToken, _position++, "{",null);}
-        else if(Current == '}'){ return new SyntaxToken(SyntaxKind.CloseBodyToken, _position++, "}",null);}
-        else if(Current == '*'){ return new SyntaxToken(SyntaxKind.StarToken, _position++, "*",null);}
-        else if(Current == '/'){ return new SyntaxToken(SyntaxKind.SlashToken, _position++, "/",null);}
-        else if(Current == '^'){ return new SyntaxToken(SyntaxKind.ExponentialToken, _position++, "^",null);}
-        else if(Current == '('){ return new SyntaxToken(SyntaxKind.OpenParenthesisToken, _position++, "(",null);}
-        else if(Current == ')'){ return new SyntaxToken(SyntaxKind.CloseParenthesisToken, _position++, ")",null);}
-        else if(Current == ';'){ return new SyntaxToken(SyntaxKind.EndOfLineToken, _position++, ";",null);}
-        throw new Exception($"ERROR: bad token in input: '{Current}'");
-        return new SyntaxToken(SyntaxKind.BadToken, _position++, _text.Substring(_position-1,1), null);
+        break;
     }
+  }
 }
+
