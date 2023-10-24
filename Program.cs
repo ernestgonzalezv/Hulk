@@ -1,46 +1,37 @@
-﻿class Program{
-    public static Dictionary <string,(string,string)> functions = new Dictionary <string, (string,string)>();
-    public static Dictionary<string,string> variables = new Dictionary<string,string>();
-    //
-    
-    static void Main()
-    {
-        //functions.Add("sina", ("x,y", "(sin(x+1));"));
-        functions.Add("op", ("s1,s2", "(s1+s2-s1-s2+s1+s2);"));
-        Console.WriteLine(functions.ContainsKey("op"));
-        while(true){
-        string _text = Console.ReadLine();
-        {EvaluateLine(_text);}
-        }
-    }
-
-    public static void EvaluateLine(string text)
-    {
-    Parser parser = new Parser(text);
-    parser.Parse();
-    var expression = parser.ans;
-    //Print(expression);
-    var evaluator = new Evaluator(expression);
-    evaluator.Evaluate();
-    
-    }
-
-    static void Print( SyntaxNode node, string indent = "" )
+public class Hulk
 {
-    Console.Write(indent);
-    Console.Write(node.Kind);
-    if( node is SyntaxToken t && t.Value!=null)
+  private static  Diagnostics Diagnostics = new Diagnostics();
+  private static Evaluator evaluator = new Evaluator(Diagnostics);
+  public static void Main()
+  {
+    while (true)
     {
-        Console.Write(" ");
-        Console.Write(t.Value);
+      Console.Write("> ");
+      string line = Console.ReadLine();
+      if (line == null)break;
+      Eval(line);
+      //resetting errrors
+      Diagnostics.RuntimeErrors = false;
+      Diagnostics.Errors = false;
     }
-    Console.WriteLine();
-    indent += "    ";
-    foreach(var child in node.GetChildren())
-    {
-        Print(child,indent);
-    }
-
-}
+    return ;
+  }
+  
+  
+  private static void Eval(string line)
+  {
+    var lexer = new Lexer(line, Diagnostics);
+    var tokens = lexer.GetTokens();
+    if (Diagnostics.RuntimeErrors || Diagnostics.Errors) 
+      return ;
+    var parser = new Parser(tokens,Diagnostics);
+    var parseResult = parser.Parse();
+    if (Diagnostics.Errors || Diagnostics.RuntimeErrors) 
+      return ;
+    var interpretResult = evaluator.Evaluate(parseResult);
+    if (Diagnostics.RuntimeErrors || Diagnostics.Errors) 
+      return ;
+    return ;
+  }
 }
 
