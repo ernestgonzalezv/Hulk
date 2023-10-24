@@ -1,31 +1,23 @@
 
+public class SyntaxToken
+{
+  public SyntaxKind Kind { get; private set; }
+  public object Literal { get; private set; }
+  public int Position { get; private set; }
+  public string Text { get; private set; }
+  
 
-
-
-public class SyntaxToken : SyntaxNode{
+  public SyntaxToken(SyntaxKind kind , int position , object literal, string text)
+  {
+    Literal = literal;
+    Position = position;
+    Kind = kind;
+    Text = text;
     
-    public override SyntaxKind Kind{get;}
-    public object  Value {get;}
-        public SyntaxToken(string text, int position) 
-        {
-            this.Text = text;
-                this.Position = position;
-               
-        }
-            public string Text {get;}
-    public int Position{get;}
-    public SyntaxToken(SyntaxKind kind, int position, string text, object value)
-    {
-        Kind=kind;
-        Text=text;
-        Value=value;
-        Position = position;
-        Value = value;
-    }
-    public override IEnumerable<SyntaxNode> GetChildren()
-    {
-        return Enumerable.Empty<SyntaxNode>();
-    }
+  }
+
+  public override string ToString()
+  {
+    return $"SyntaxToken({Kind}, {Text}, {Literal})";
+  }
 }
-
-
