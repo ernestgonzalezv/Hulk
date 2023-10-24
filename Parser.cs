@@ -1,144 +1,297 @@
+using static SyntaxKind;
 
-class Parser
+public class Parser
 {
-    public ExpressionSyntax ans;
-    public SyntaxToken [] _tokens;
-    int _position;
-    bool x = true;
-    public string _text; 
-    public Parser(string text)
+  private class ParserError : Exception { }
+  public List<SyntaxToken> Tokens;
+  private readonly Diagnostics Diagnostics;
+  private int Current = 0;
+  
+
+  public Parser(List<SyntaxToken> tokens, Diagnostics diagnostics)
+  {
+    Tokens = tokens;
+    Diagnostics = diagnostics;
+  }
+
+  //auxiliar methods
+  private SyntaxToken PreviousToken(){return Tokens[Current-1];}
+  private SyntaxToken CurrentToken(){return Tokens[Current];}
+  private SyntaxToken NextToken(){return Tokens[Current+1];}
+  private bool CheckCurrent(SyntaxKind kind){if (AtTheEnd()) return false;return CurrentToken().Kind == kind;}
+  private bool CheckNext(SyntaxKind kind){if (AtTheEnd()) return false;return NextToken().Kind == kind;}
+  private SyntaxToken Advance(){if (!AtTheEnd()) Current++;return PreviousToken();}
+  private bool AtTheEnd(){return CurrentToken().Kind == SyntaxKind.EOF;}
+  private SyntaxToken EatToken(SyntaxKind type, string ErrorMessage)
+  {
+    if (CheckCurrent(type)) return Advance();
+    Diagnostics.ErrorToken("!SYNTAX ERROR: ", CurrentToken(), ErrorMessage);
+    return null;
+  }
+
+  private bool MatchToken(SyntaxKind kind)
+  {
+    if(CheckCurrent(kind))
     {
-        _text= text; 
-        var tokens = new List<SyntaxToken> ();
-        var lexer = new Lexer(text);
-        SyntaxToken token = lexer.NextToken() ; 
-        while(token.Kind != SyntaxKind.EndOfFileToken)
-        {
-            if(token.Kind != SyntaxKind.WhiteSpaceToken && token.Kind != SyntaxKind.BadToken)
-            {
-                tokens.Add(token);
-            }
-            token = lexer.NextToken();
-        }
-        tokens.Add(lexer.NextToken());
-        _tokens = tokens.ToArray();
+      Advance();
+      return true;
 
     }
-    private SyntaxToken Peek(int offset){ // look ahead at the next token to decide how to parse everything
-        var index = _position+ offset;
-        if(index>=_tokens.Length)
-            return _tokens[_tokens.Length-1];
-        return _tokens[index];
+    return false;
+  }
+  private bool MatchTokens(SyntaxKind [] kinds)
+  {
+    foreach(SyntaxKind kind in kinds)
+    {
+      if(CheckCurrent(kind)){
+        Advance();
+        return true;
+      }
+    }
+    return false;
+  }
+
+
+  //Parsing Methods
+
+
+  //Expression Blocks
+  public ExpressionSyntax Parse()
+  {
+    try
+    {
+      ExpressionSyntax result = GetExpression();
+      if (MatchToken(SemicolonToken)){
+        if (!AtTheEnd()){
+          Diagnostics.ErrorToken("!SYNTAX ERROR: ", CurrentToken(), "EOF Token not found after `;`.");
+          return null;
+        }
+        return result;
+      }
+
+      Diagnostics.ErrorToken("!SYNTAX ERROR: ", CurrentToken(), "`;` Token not found.");
+      return null;
+    }
+    catch
+    {
+      Diagnostics.ErrorToken("!SYNTAX ERROR: ", CurrentToken(), "Unreachable code.");
+      return null;
+    }
+  }
+
+  private ExpressionSyntax GetExpression()
+  {
+    if (MatchToken(FunctionToken))
+    {
+      var name = EatToken(IDENTIFIER, "Function name not found.");
+      EatToken(OpenParenthesisToken, $"Open parenthesis Token not found after `{name}`.");
+      var parameters = new List<SyntaxToken>();
+      if (!CheckCurrent(CloseParenthesisToken) && !CheckCurrent(ImpliesToken))
+      {
+        do
+        {
+          parameters.Add(EatToken(IDENTIFIER, "Parameter's name not found after `,`."));
+          if (parameters.Count > 11)
+          {
+            Diagnostics.ErrorToken("!SYNTAX ERROR: ", CurrentToken(), "Functions cannot support more than 10 parameters.");
+            return null;
+          } 
+        }while (MatchToken(CommaToken));    
+      }
+      
+      if (parameters.Count == 0) EatToken(CloseParenthesisToken, "Closing parenthesis Token not found after `(` .");
+      else EatToken(CloseParenthesisToken, "Closing parenthesis Token not found after " + parameters.Last().Text +" .");
+      EatToken(ImpliesToken, "`=>` Token not found before body.");
+      return new ExpressionSyntax.FunctionExpressionSyntax(name, parameters, ParseExpressionSyntax());
+    }
+    //if not then 
+    return ParseExpressionSyntax();
+  }
+
+  private ExpressionSyntax GetVariables()
+  {
+    if (MatchToken(LetToken))
+    {
+      var variables = Variables();
+      EatToken(InToken, "`in` Token not found at end of `let-in` expression.");
+      return new ExpressionSyntax.LetInExpressionSyntax(variables, ParseExpressionSyntax());
+    }
+    return ParseIfStatementExpressionSyntax();
+  }
+
+  private List<ExpressionSyntax.AssignmentExpressionSyntax> Variables()
+  {
+    List<ExpressionSyntax.AssignmentExpressionSyntax> variables = new List<ExpressionSyntax.AssignmentExpressionSyntax>();
+    do
+    {
+      if (!MatchToken(IDENTIFIER)) // didnt find a variable name 
+      {
+        Diagnostics.ErrorToken("!SYNTAX ERROR: ", CurrentToken(), "Invalid token in `let-in` expression.");
+        return null;
+      }
+
+      SyntaxToken Variable = PreviousToken();
+      EatToken(EqualToken, $" `=` not found after variable `{Variable.Text}`.");
+      variables.Add(new ExpressionSyntax.AssignmentExpressionSyntax(Variable, ParseExpressionSyntax()));
+    } while (MatchToken(CommaToken));
+
+    return variables;
+  }
+
+  private ExpressionSyntax ParseIfStatementExpressionSyntax()
+  {
+    if (MatchToken(IfToken))
+    {
+      EatToken(OpenParenthesisToken, "Open parenthesis Token not found after `if` expression.");
+      var IfCondition = ParseExpressionSyntax();
+      EatToken(CloseParenthesisToken, "Closing parenthesis Token not found after condition.");
+      var Response = ParseExpressionSyntax();
+      EatToken(ElseToken, "Else expression expected after expression."); 
+      return new ExpressionSyntax.ConditionalExpressionSyntax(IfCondition, Response, ParseExpressionSyntax());
+    }
+    return ParseLogicalOr();
+  }
+
+  private ExpressionSyntax ParseExpressionSyntax()
+  {
+    return GetVariables();
+  }
+
+
+  //Single Expressions
+  private ExpressionSyntax ParseLogicalOr()
+  {
+    var Left = ParseLogicalAnd();
+    while (MatchToken(OrToken))
+    {
+      var OperatorToken = PreviousToken();
+      var Right = ParseLogicalAnd();
+      Left = new ExpressionSyntax.BinaryExpressionSyntax(Left, OperatorToken, Right);
     }
 
-    private SyntaxToken Current => Peek(0);
-    private SyntaxToken LookAhead => Peek(1);
+    return Left;
+  }
 
+  private ExpressionSyntax ParseLogicalAnd()
+  {
+    var Left = Operations4();
+    while (MatchToken(AndToken))
+    {
+      var OperatorToken = PreviousToken();
+      var Right = Operations4();
+      Left = new ExpressionSyntax.BinaryExpressionSyntax(Left, OperatorToken, Right);
+    }
+    return Left;
+  }
 
-    private SyntaxToken NextToken()
+  private ExpressionSyntax ParseLiteralExpressionSyntax()
+  {
+    switch (CurrentToken().Kind)
     {
-        var current= Current;
-        _position++;
-        return current;
-    } 
-    private SyntaxToken Match(SyntaxKind kind)
+      
+      case TrueToken:
+        Advance();
+        return new ExpressionSyntax.LiteralExpressionSyntax(true);
+      case FalseToken:
+        Advance();
+        return new ExpressionSyntax.LiteralExpressionSyntax(false);
+      case EulerToken:
+        Advance();
+        return new ExpressionSyntax.LiteralExpressionSyntax(Math.E);
+      case StringToken:
+      case NumberToken:
+        return new ExpressionSyntax.LiteralExpressionSyntax(Advance().Literal);
+      case IDENTIFIER:
+        return new ExpressionSyntax.VariableExpressionSyntax(Advance());
+      case PIToken:
+        Advance();
+        return new ExpressionSyntax.LiteralExpressionSyntax(Math.PI);
+
+      
+      default:
+        Diagnostics.ErrorToken("!SYNTAX ERROR: ", CurrentToken(), "Expression Expected and not found.");
+        return null;
+    }
+  }
+
+  private List<ExpressionSyntax> GetParameters()
+  {
+    var parameters = new List<ExpressionSyntax>();
+    if (!CheckCurrent(CloseParenthesisToken))
     {
-        if(Current.Kind == kind )
-            return NextToken();
-        return new SyntaxToken(kind,Current.Position,null,null);
+      do{parameters.Add(ParseExpressionSyntax());} while (MatchToken(CommaToken));
+    }
+    return parameters;
+  }
+  private ExpressionSyntax ParseFunctionCallingExpressionSyntax()
+  {
+    if (CheckCurrent(IDENTIFIER) && CheckNext(OpenParenthesisToken))
+    {
+      SyntaxToken name = Advance();
+      EatToken(OpenParenthesisToken, $"Open parenthesis Token not found after {name.Text}.");
+      List<ExpressionSyntax> parameters = GetParameters();
+      EatToken(CloseParenthesisToken, $"Closing parenthesis Token not found after parameters.");
+      return new ExpressionSyntax.CallingExpressionSyntax(name, parameters);
+    }
+    return ParseLiteralExpressionSyntax();
+  }
+  private ExpressionSyntax ParseParenthesizedExpressionSyntax()
+  {
+    if (MatchToken(OpenParenthesisToken))
+    {
+      ExpressionSyntax expression = ParseExpressionSyntax();
+      EatToken(CloseParenthesisToken, "Closing parenthesis Token not found after expression.");
+      return expression;
+    }
+    return ParseFunctionCallingExpressionSyntax();
+  }
+  private ExpressionSyntax ParseUnaryExpressionSyntax()
+  {
+    if (MatchToken(NotToken) || MatchToken(MinusToken))
+    {
+      var OperatorToken = PreviousToken();
+      var Expression = ParseUnaryExpressionSyntax();
+      return new ExpressionSyntax.UnaryExpressionSyntax(OperatorToken, Expression);
     }
 
+    return ParseParenthesizedExpressionSyntax();
+  }
 
-    public void Parse()
+  //SyntaxFacts Precedence
+  private ExpressionSyntax ParseBinaryExpressionSyntax(Func<ExpressionSyntax> HigherBinaryOperatorPrecedence, params SyntaxKind[] Kinds)
+  {
+    var Left = HigherBinaryOperatorPrecedence();
+    while (MatchTokens(Kinds))
     {
-        ans= ParseExpressionSyntax();
-        Console.WriteLine(Current.Kind);
-        while(Current.Kind != SyntaxKind.EndOfLineToken)
-        {
-            var commaToken = Current;
-            NextToken();
-            ans = new BinaryExpressionSyntax(ans, commaToken , ParseExpressionSyntax());
-        }
+      var OperatorToken = PreviousToken();
+      var Right = HigherBinaryOperatorPrecedence();
+      Left = new ExpressionSyntax.BinaryExpressionSyntax(Left, OperatorToken, Right);
     }
+    return Left;
+  }
 
-    public ExpressionSyntax ParseExpressionSyntax( int ParentPrecedence = 0)
-    {
-        ExpressionSyntax left ; 
+  private ExpressionSyntax Operations()
+  {
+    return ParseBinaryExpressionSyntax(ParseUnaryExpressionSyntax, PowerToken);
+  }
+  private ExpressionSyntax Operations1()
+  {
+    return ParseBinaryExpressionSyntax(Operations , StarToken , SlashToken , ModToken);
+  }
+  private ExpressionSyntax Operations2()
+  {
+    return ParseBinaryExpressionSyntax(Operations1, PlusToken,  MinusToken,  ConcatenationToken);
+  }
+  private ExpressionSyntax Operations3()
+  {
+    return ParseBinaryExpressionSyntax(Operations2 , GreaterEqualToken , GreaterToken, LessToken, LessEqualToken);
+  }
+  private ExpressionSyntax Operations4()
+  {
+    return ParseBinaryExpressionSyntax(Operations3, EqualEqualToken , NotEqualToken);
+  }
 
-        var unaryOperatorPrecedence = Current.Kind.GetUnaryOperatorPrecedence();
+  
 
-        if(unaryOperatorPrecedence != 0 && unaryOperatorPrecedence>=ParentPrecedence)
-        {
-            var operatorToken = NextToken();
-            var operand = ParseExpressionSyntax(unaryOperatorPrecedence);
-            left = new UnaryExpressionSyntax(operatorToken, operand);
-        }
-        else
-        {
-            left = ParsePrimaryExpression();
-        }
-
-        while(true){
-            if(Current.Kind == SyntaxKind.CommaToken){
-                if(x==true)break;
-            }
-            var precedence = Current.Kind.GetBinaryOperatorPrecedence();
-            if(precedence == 0 || precedence<=ParentPrecedence) break;
-            var operatorToken = NextToken();
-            var right = ParseExpressionSyntax(precedence);
-            left = new BinaryExpressionSyntax(left, operatorToken,right);
-        }
-        return left ; 
-
-    }
-    
-
-
-    private ExpressionSyntax ParsePrimaryExpression()
-    {
-
-        if(Current.Kind == SyntaxKind.FunctionExpressionCallingToken)
-        {
-            var text = Current.Text;
-            //Console.WriteLine(text);
-            if(LookAhead.Kind == SyntaxKind.EqualsToken){
-                //assignment
-                var left1 = Current.Text;
-                var op = NextToken();
-                NextToken();
-                x=true;
-                var right1 = ParseExpressionSyntax();
-                return new AssignmentExpressionSyntax(left1, op , right1);
-            }
-            NextToken();
-
-            //Console.WriteLine(Current.Text + " "+ text);;
-            var left = NextToken();
-            x=false;
-            var expression = ParseExpressionSyntax();
-            var right = Match(SyntaxKind.CloseParenthesisToken);
-            Console.WriteLine(text+" "+left.Position + " " + right.Position);
-            var parameters= _text.Substring(left.Position+1, right.Position-left.Position-1);
-            //Console.WriteLine(parameters);
-            return new FunctionExpressionCalling(text,left,expression,right, parameters);
-            
-        }
-
-        if(Current.Kind == SyntaxKind.OpenParenthesisToken)
-        {
-            var left = NextToken();
-            var expression = ParseExpressionSyntax();
-            var right = Match(SyntaxKind.CloseParenthesisToken);
-
-           
-            return new ParenthesizedExpression(left, expression,right);
-        }       
-
-        var literalToken = Match(SyntaxKind.IntegerToken);
-        return new LiteralExpressionSyntax(literalToken);
-    }
-
-    
-    
-    
+  
 }
